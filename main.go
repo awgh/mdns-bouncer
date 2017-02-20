@@ -1,9 +1,11 @@
 package main
 
 import (
-	"bytes"
+	"strings"
 	"log"
 	"net"
+	dns "github.com/miekg/dns"
+
 )
 
 var (
@@ -38,7 +40,16 @@ func main() {
 			break
 		}
 
-		if bytes.Compare(bouncedAddr.IP, srcAddr.IP) == 0 {
+		log.Println(srcAddr, bouncedAddr)
+                msg := &dns.Msg{}
+		msg.Unpack(b[:])
+                log.Println(msg.String())
+
+		lhs := strings.Split(srcAddr.String(), ":")
+		rhs := strings.Split(bouncedAddr.String(), ":")
+
+		if len(lhs) > 0 && len(rhs) > 0 && lhs[0] == rhs[0] {
+			log.Println("after compare")
 			_, err := dialSocket.Write(b)
 			if err != nil {
 				log.Println("Write failed with:", err.Error())
@@ -60,7 +71,7 @@ func initListenSocket() *net.UDPConn {
 }
 
 func initDialSocket() *net.UDPConn {
-	socket, err := net.DialUDP("udp", nil, multicastAddr)
+	socket, err := net.DialUDP("udp", &net.UDPAddr{ IP:net.IPv4(192,168,1,10)  }, multicastAddr)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
