@@ -1,47 +1,57 @@
 package main
 
 import (
+	"bytes"
 	"log"
 	"net"
-
-	dns "github.com/miekg/dns"
 )
 
 var (
-	maxDatagramSize  int
-	udpRemoteAddress *net.UDPAddr
+	maxDatagramSize            int
+	multicastAddr, bouncedAddr *net.UDPAddr
 )
 
 func init() {
 
 	maxDatagramSize = 4096
 
-	udpRemoteAddress = &net.UDPAddr{
+	multicastAddr = &net.UDPAddr{
 		IP:   net.IPv4(224, 0, 0, 251),
+		Port: 5353,
+	}
+
+	bouncedAddr = &net.UDPAddr{
+		IP:   net.IPv4(192, 168, 1, 20), // CHANGE THIS TO THE ADDRESS YOU WANT BOUNCED
 		Port: 5353,
 	}
 }
 
 func main() {
 	listenSocket := initListenSocket()
-	//dialSocket := initDialSocket()
+	dialSocket := initDialSocket()
 
 	for {
 		b := make([]byte, maxDatagramSize)
-		_, cm, err := listenSocket.ReadFromUDP(b)
+		_, srcAddr, err := listenSocket.ReadFromUDP(b)
 		if err != nil {
 			log.Printf("mdnsListen: ReadFrom: error %v", err)
 			break
 		}
-		log.Println(cm)
-		msg := &dns.Msg{}
-		msg.Unpack(b[:])
-		log.Println(msg.String())
+
+		if bytes.Compare(bouncedAddr.IP, srcAddr.IP) == 0 {
+			_, err := dialSocket.Write(b)
+			if err != nil {
+				log.Println("Write failed with:", err.Error())
+			}
+		}
 	}
+
+	defer listenSocket.Close()
+	defer dialSocket.Close()
 }
 
 func initListenSocket() *net.UDPConn {
-	socket, err := net.ListenMulticastUDP("udp4", nil, udpRemoteAddress)
+	socket, err := net.ListenMulticastUDP("udp4", nil, multicastAddr)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -50,11 +60,7 @@ func initListenSocket() *net.UDPConn {
 }
 
 func initDialSocket() *net.UDPConn {
-	udpRemoteAddress := &net.UDPAddr{ //todo add real interface instead of nil arg
-		IP:   net.IPv4(224, 0, 0, 251),
-		Port: 5353,
-	}
-	socket, err := net.DialUDP("udp", nil, udpRemoteAddress)
+	socket, err := net.DialUDP("udp", nil, multicastAddr)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
